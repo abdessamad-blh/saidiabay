@@ -15,14 +15,11 @@ export default function NewHeroPage() {
   const [imagePreview, setImagePreview] = useState('');
   
   const [formData, setFormData] = useState({
-    title: '',
-    subtitle: '',
     imageUrl: '',
-    ctaText: '',
     ctaLink: '',
   });
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({
       ...formData,
       [e.target.name]: e.target.value,
@@ -40,9 +37,9 @@ export default function NewHeroPage() {
         const width = img.width;
         const height = img.height;
         
-        if (width < 1080 || height < 600) {
+        if (width < 1280 || height < 720) {
           showToast(
-            `Image trop petite (${width}x${height}px). Minimum requis: 1080x600px`,
+            `Image trop petite (${width}x${height}px). Minimum requis: 1280x720px`,
             'error'
           );
           resolve(false);
@@ -94,19 +91,16 @@ export default function NewHeroPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate file type
     if (!file.type.startsWith('image/')) {
       showToast('Veuillez sélectionner une image', 'error');
       return;
     }
 
-    // Validate file size (max 10MB)
     if (file.size > 10 * 1024 * 1024) {
       showToast('Image trop grande (max 10MB)', 'error');
       return;
     }
 
-    // Validate image dimensions
     const isValidSize = await validateImageSize(file);
     if (!isValidSize) return;
 
@@ -160,30 +154,6 @@ export default function NewHeroPage() {
 
       <Card>
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Title (Optional) */}
-          <Input
-            label="Titre (optionnel)"
-            name="title"
-            value={formData.title}
-            onChange={handleChange}
-            placeholder="Titre principal"
-          />
-
-          {/* Subtitle */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Sous-titre (optionnel)
-            </label>
-            <textarea
-              name="subtitle"
-              value={formData.subtitle}
-              onChange={handleChange}
-              rows={3}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Sous-titre"
-            />
-          </div>
-
           {/* Image Upload */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -210,8 +180,8 @@ export default function NewHeroPage() {
               </label>
 
               <p className="text-sm text-gray-600">
-                📏 <strong>Taille minimale:</strong> 1080 x 600 px<br />
-                ✨ <strong>Taille recommandée:</strong> 1920 x 1080 px<br />
+                📏 <strong>Taille minimale:</strong> 1280 x 720 px<br />
+                ✨ <strong>Taille recommandée:</strong> Un ratio de 16:9 ( 1920x1080 px ou 2560x1440 px)<br />
                 📦 <strong>Taille maximale du fichier:</strong> 10 MB
               </p>
 
@@ -238,19 +208,10 @@ export default function NewHeroPage() {
               placeholder="Ex: /properties ou https://example.com"
               required
             />
-            <p className="mt-1 text-xs text-gray-500">
-              Lien interne (ex: /properties) ou externe (ex: https://example.com). L'image entière sera cliquable.
+            <p className="text-xs text-gray-500 mt-1">
+              Lien interne (ex: /properties) ou externe (ex: https://example.com). Les clics seront comptabilisés.
             </p>
           </div>
-
-          {/* CTA Text */}
-          <Input
-            label="Texte du bouton (optionnel)"
-            name="ctaText"
-            value={formData.ctaText}
-            onChange={handleChange}
-            placeholder="Ex: Découvrir nos biens"
-          />
 
           {/* Submit Buttons */}
           <div className="flex gap-4">

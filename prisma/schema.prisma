@@ -15,6 +15,7 @@ model User {
   phone     String?  
   password  String
   role      Role     @default(USER)
+  heroClicks HeroClick[]
   
   // Sécurité
   emailVerified Boolean  @default(false)
@@ -288,18 +289,36 @@ model Blog {
 
 model HeroSection {
   id          String   @id @default(cuid())
-  title       String
-  subtitle    String?
   imageUrl    String
-  ctaText     String?
   ctaLink     String?
   order       Int      @default(0)
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  clicks    HeroClick[]
   
+  @@map("hero_sections")
+
   @@index([order])
   @@index([isActive])
+}
+
+model HeroClick {
+  id          String      @id @default(uuid())
+  heroId      String
+  hero        HeroSection @relation(fields: [heroId], references: [id], onDelete: Cascade)
+  userId      String?
+  user        User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  visitorId   String      // Cookie-based ID
+  clickedAt   DateTime    @default(now())
+  
+  @@index([heroId])
+  @@index([userId])
+  @@index([visitorId])
+  @@index([clickedAt])
+  @@index([heroId, visitorId, clickedAt(sort: Desc)])
+  
+  @@map("hero_clicks")
 }
 
 model Sale {

@@ -11,6 +11,8 @@ import blogRoutes from './routes/blog.routes';
 import heroRoutes from './routes/hero.routes';
 import statsRoutes from './routes/stats.routes';
 import { errorHandler } from './middlewares/error.middleware';
+import heroClickRoutes from './routes/heroClick.routes';
+
 
 dotenv.config();
 
@@ -44,6 +46,9 @@ app.use('/api/leads', leadRoutes);
 app.use('/api/blogs', blogRoutes);
 app.use('/api/heroes', heroRoutes);
 app.use('/api/stats', statsRoutes);
+
+app.use('/api/hero-clicks', heroClickRoutes);
+
 
 // Error handling
 app.use(errorHandler);

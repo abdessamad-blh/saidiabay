@@ -5,14 +5,13 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Property } from '@/types';
 import { formatCurrency } from '@/lib/utils/format';
+import Cookies from 'js-cookie';
+import { v4 as uuidv4 } from 'uuid';
 
 interface HeroSection {
   id: string;
-  title: string;
-  subtitle?: string;
   imageUrl: string;
-  ctaText?: string;
-  ctaLink?: string;
+  ctaLink: string;
   order: number;
   isActive: boolean;
 }
@@ -24,8 +23,17 @@ export default function HomePage() {
   const [heroes, setHeroes] = useState<HeroSection[]>([]);
   const [currentHero, setCurrentHero] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [visitorId, setVisitorId] = useState<string>('');
 
   useEffect(() => {
+    // Get or create visitor ID
+    let vid = Cookies.get('visitor_id');
+    if (!vid) {
+      vid = uuidv4();
+      Cookies.set('visitor_id', vid, { expires: 365 }); // 1 year
+    }
+    setVisitorId(vid);
+
     loadProperties();
     loadHeroes();
   }, []);
@@ -47,11 +55,9 @@ export default function HomePage() {
       const data = await response.json();
       const properties = data.data.properties;
 
-      // Get first property for VENTE
       const sale = properties.find((p: Property) => p.listingType === 'VENTE');
       setSaleProperty(sale || null);
 
-      // Get first property for LOCATION
       const rent = properties.find((p: Property) => p.listingType === 'LOCATION');
       setRentProperty(rent || null);
     } catch (error) {
@@ -74,17 +80,47 @@ export default function HomePage() {
     }
   };
 
+  const handleHeroClick = async (hero: HeroSection) => {
+    if (!visitorId) return;
+
+    // Get user ID if logged in
+    const userStr = localStorage.getItem('user');
+    const userId = userStr ? JSON.parse(userStr)?.id : null;
+
+    // Track click
+    try {
+      await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/api/hero-clicks/track`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            heroId: hero.id,
+            visitorId,
+            userId,
+          }),
+        }
+      );
+    } catch (error) {
+      console.error('Error tracking click:', error);
+    }
+
+    // Navigate to link
+    if (hero.ctaLink.startsWith('/')) {
+      router.push(hero.ctaLink);
+    } else {
+      window.location.href = hero.ctaLink;
+    }
+  };
+
   const handleReservation = (property: Property) => {
-    // Check if user is logged in
     const user = localStorage.getItem('user');
     
     if (!user) {
-      // Redirect to login if not logged in
       router.push('/login');
       return;
     }
 
-    // Redirect to property detail page for reservation
     router.push(`/property/${property.id}`);
   };
 
@@ -112,47 +148,22 @@ export default function HomePage() {
       {/* Hero Section / Slider */}
       {heroes.length > 0 ? (
         <section className="relative h-[500px] overflow-hidden">
-          {heroes.map((hero, index) => {
-            const heroContent = (
+          {heroes.map((hero, index) => (
+            <div
+              key={hero.id}
+              className={`absolute inset-0 transition-opacity duration-1000 ${
+                index === currentHero ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+              }`}
+            >
               <div
-                className={`absolute inset-0 transition-opacity duration-1000 ${
-                  index === currentHero ? 'opacity-100' : 'opacity-0'
-                }`}
+                onClick={() => handleHeroClick(hero)}
+                className="absolute inset-0 bg-cover bg-center hover:scale-105 transition-transform duration-700 cursor-pointer"
+                style={{ backgroundImage: `url(${hero.imageUrl})` }}
               >
-                <div
-                  className="absolute inset-0 bg-cover bg-center"
-                  style={{ backgroundImage: `url(${hero.imageUrl})` }}
-                >
-                  <div className="absolute inset-0 bg-black bg-opacity-40" />
-                </div>
-                <div className="relative container mx-auto px-4 h-full flex items-center justify-center">
-                  <div className="text-center text-white max-w-3xl">
-                    {hero.title && (
-                      <h2 className="text-5xl font-bold mb-4">{hero.title}</h2>
-                    )}
-                    {hero.subtitle && (
-                      <p className="text-xl mb-8">{hero.subtitle}</p>
-                    )}
-                    {hero.ctaText && hero.ctaLink && (
-                      <Link href={hero.ctaLink}>
-                        <Button size="lg">{hero.ctaText}</Button>
-                      </Link>
-                    )}
-                  </div>
-                </div>
+                <div className="absolute inset-0 bg-black bg-opacity-30 hover:bg-opacity-40 transition-all" />
               </div>
-            );
-
-            return hero.ctaLink ? (
-              <Link key={hero.id} href={hero.ctaLink} className="block">
-                {heroContent}
-              </Link>
-            ) : (
-              <div key={hero.id}>
-                {heroContent}
-              </div>
-            );
-          })}
+            </div>
+          ))}
 
           {heroes.length > 1 && (
             <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 flex gap-2 z-10">
@@ -191,7 +202,6 @@ export default function HomePage() {
           <div className="text-center py-12">Chargement...</div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-6xl mx-auto">
-            {/* VENTE Property */}
             {saleProperty ? (
               <PropertyCard
                 property={saleProperty}
@@ -204,7 +214,6 @@ export default function HomePage() {
               </div>
             )}
 
-            {/* LOCATION Property */}
             {rentProperty ? (
               <PropertyCard
                 property={rentProperty}
@@ -283,7 +292,6 @@ function PropertyCard({
 
   return (
     <div className="bg-white rounded-lg overflow-hidden shadow-lg">
-      {/* Badge */}
       <div className="relative">
         <span
           className={`absolute top-4 right-4 z-10 px-4 py-2 rounded-full text-sm font-bold ${
@@ -295,7 +303,6 @@ function PropertyCard({
           {type === 'LOCATION' ? 'À Louer' : 'À Vendre'}
         </span>
 
-        {/* Image */}
         <Link href={`/property/${property.id}`}>
           <img
             src={property.thumbnail}
@@ -305,7 +312,6 @@ function PropertyCard({
         </Link>
       </div>
 
-      {/* Content */}
       <div className="p-6">
         <Link href={`/property/${property.id}`}>
           <h3 className="text-2xl font-bold text-gray-900 mb-2 hover:text-blue-600 cursor-pointer">
@@ -317,7 +323,6 @@ function PropertyCard({
           📍 <span className="font-medium">{property.city?.name}</span>
         </p>
 
-        {/* Features */}
         <div className="flex flex-wrap gap-3 mb-6">
           {features.map((feature, idx) => (
             <span
@@ -329,7 +334,6 @@ function PropertyCard({
           ))}
         </div>
 
-        {/* Price */}
         <div className="mb-6 pb-6 border-b">
           <div className="flex items-baseline gap-2">
             <span className="text-3xl font-bold text-blue-600">
@@ -341,7 +345,6 @@ function PropertyCard({
           </div>
         </div>
 
-        {/* Reservation Button */}
         <Button
           onClick={() => onReservation(property)}
           className="w-full"
@@ -350,7 +353,6 @@ function PropertyCard({
           {type === 'LOCATION' ? '📅 Réserver' : '💼 Je suis intéressé'}
         </Button>
 
-        {/* View Details Link */}
         <Link href={`/property/${property.id}`}>
           <p className="text-center text-blue-600 hover:text-blue-700 mt-4 text-sm font-medium cursor-pointer">
             Voir les détails →

@@ -15,23 +15,25 @@ export default function EditHeroPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [imagePreview, setImagePreview] = useState('');
+  const [clickStats, setClickStats] = useState({ monthly: 0, total: 0 });
   
   const [formData, setFormData] = useState({
-    title: '',
-    subtitle: '',
     imageUrl: '',
-    ctaText: '',
     ctaLink: '',
   });
 
   useEffect(() => {
     loadHero();
+    loadClickStats();
   }, []);
 
   const loadHero = async () => {
     try {
       const response: any = await api.get(`/api/heroes/${params.id}`);
-      setFormData(response.data);
+      setFormData({
+        imageUrl: response.data.imageUrl,
+        ctaLink: response.data.ctaLink,
+      });
       setImagePreview(response.data.imageUrl);
     } catch (error) {
       showToast('Erreur de chargement', 'error');
@@ -41,24 +43,39 @@ export default function EditHeroPage() {
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const loadClickStats = async () => {
+    try {
+      const [monthlyResponse, totalResponse]: any[] = await Promise.all([
+        api.get(`/api/hero-clicks/${params.id}/monthly`),
+        api.get(`/api/hero-clicks/${params.id}/total`),
+      ]);
+
+      setClickStats({
+        monthly: monthlyResponse.data.clicks,
+        total: totalResponse.data.totalClicks,
+      });
+    } catch (error) {
+      console.error('Error loading click stats:', error);
+    }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({
       ...formData,
       [e.target.name]: e.target.value,
     });
   };
 
-  // Validate image dimensions
-  const validateImageSize = (file: File): Promise<boolean> => {
-    return new Promise((resolve) => {
+  const validateImageSize = async (file: File): Promise<boolean> => {
+    return new Promise<boolean>((resolve) => {
       const img = new window.Image();
       const url = URL.createObjectURL(file);
-      
+
       img.onload = () => {
         URL.revokeObjectURL(url);
         const width = img.width;
         const height = img.height;
-        
+
         if (width < 1080 || height < 600) {
           showToast(
             `Image trop petite (${width}x${height}px). Minimum requis: 1080x600px`,
@@ -69,18 +86,17 @@ export default function EditHeroPage() {
           resolve(true);
         }
       };
-      
+
       img.onerror = () => {
         URL.revokeObjectURL(url);
         showToast('Erreur de chargement de l\'image', 'error');
         resolve(false);
       };
-      
+
       img.src = url;
     });
   };
 
-  // Upload image to Cloudinary
   const uploadImageToCloudinary = async (file: File): Promise<string> => {
     const formData = new FormData();
     formData.append('file', file);
@@ -113,19 +129,16 @@ export default function EditHeroPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate file type
     if (!file.type.startsWith('image/')) {
       showToast('Veuillez sélectionner une image', 'error');
       return;
     }
 
-    // Validate file size (max 10MB)
     if (file.size > 10 * 1024 * 1024) {
       showToast('Image trop grande (max 10MB)', 'error');
       return;
     }
 
-    // Validate image dimensions
     const isValidSize = await validateImageSize(file);
     if (!isValidSize) return;
 
@@ -153,15 +166,11 @@ export default function EditHeroPage() {
       return;
     }
 
-    if (!formData.ctaLink) {
-      showToast('Le lien est requis', 'error');
-      return;
-    }
-
     setIsSubmitting(true);
 
     try {
-      await api.put(`/api/heroes/${params.id}`, formData);
+      // Only update the image URL, not the CTA link
+      await api.put(`/api/heroes/${params.id}`, { imageUrl: formData.imageUrl });
       showToast('Image hero mise à jour', 'success');
       router.push('/heroes');
     } catch (error: any) {
@@ -181,32 +190,26 @@ export default function EditHeroPage() {
         <h1 className="text-3xl font-bold text-gray-900">Modifier l'Image Hero</h1>
       </div>
 
+      {/* Click Statistics */}
+      <Card>
+        <h3 className="text-lg font-semibold mb-4">📊 Statistiques de clics</h3>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="bg-blue-50 p-4 rounded-lg">
+            <p className="text-sm text-gray-600">Clics ce mois-ci</p>
+            <p className="text-3xl font-bold text-blue-600">{clickStats.monthly}</p>
+          </div>
+          <div className="bg-green-50 p-4 rounded-lg">
+            <p className="text-sm text-gray-600">Total des clics</p>
+            <p className="text-3xl font-bold text-green-600">{clickStats.total}</p>
+          </div>
+        </div>
+        <p className="text-xs text-gray-500 mt-3">
+          💡 1 clic par utilisateur par jour est compté (évite les doubles-clics)
+        </p>
+      </Card>
+
       <Card>
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Title (Optional) */}
-          <Input
-            label="Titre (optionnel)"
-            name="title"
-            value={formData.title}
-            onChange={handleChange}
-            placeholder="Titre principal"
-          />
-
-          {/* Subtitle */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Sous-titre (optionnel)
-            </label>
-            <textarea
-              name="subtitle"
-              value={formData.subtitle}
-              onChange={handleChange}
-              rows={3}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Sous-titre"
-            />
-          </div>
-
           {/* Image Upload */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -251,29 +254,28 @@ export default function EditHeroPage() {
             </div>
           </div>
 
-          {/* CTA Link (Required) */}
+          {/* CTA Link (Read-only) */}
           <div>
-            <Input
-              label="Lien de destination * (Requis)"
-              name="ctaLink"
-              value={formData.ctaLink}
-              onChange={handleChange}
-              placeholder="Ex: /properties ou https://example.com"
-              required
-            />
-            <p className="mt-2 text-sm text-gray-600">
-              Lien interne (ex: /properties) ou externe (ex: https://example.com). L'image entière sera cliquable.
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Lien de destination 🔒 <span className="text-gray-500">(Non modifiable)</span>
+            </label>
+            <div className="relative">
+              <Input
+                name="ctaLink"
+                value={formData.ctaLink}
+                onChange={handleChange}
+                placeholder="Ex: /properties ou https://example.com"
+                disabled
+                className="bg-gray-50 cursor-not-allowed"
+              />
+              <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+                🔒
+              </span>
+            </div>
+            <p className="mt-1 text-sm text-amber-600">
+              ⚠️ Le lien ne peut pas être modifié pour préserver l'historique des clics. Créez une nouvelle image hero pour utiliser un lien différent.
             </p>
           </div>
-
-          {/* CTA Text */}
-          <Input
-            label="Texte du bouton (optionnel)"
-            name="ctaText"
-            value={formData.ctaText}
-            onChange={handleChange}
-            placeholder="Ex: Découvrir nos biens"
-          />
 
           {/* Submit Buttons */}
           <div className="flex gap-4">
