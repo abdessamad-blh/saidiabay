@@ -2,6 +2,7 @@ export interface User {
   id: string;
   name: string;
   email: string;
+  phone?: string;
   role: 'USER' | 'ADMIN';
   createdAt: string;
 }
@@ -80,8 +81,9 @@ export interface Reservation {
   guestName: string;
   guestEmail: string;
   guestPhone: string;
+  guestCountry?: string;
   message?: string;
-  status: 'PRE_RESERVED' | 'CONFIRMED' | 'CANCELLED';
+  status: 'PENDING' | 'PRE_RESERVED' | 'CONFIRMED' | 'CANCELLED';
   totalPrice: number;
   createdAt: string;
   updatedAt: string;
@@ -93,9 +95,13 @@ export interface Lead {
   id: string;
   propertyId: string;
   property?: Property;
-  name: string;
-  email: string;
-  phone: string;
+  name?: string;
+  email?: string;
+  phone?: string;
+  guestName?: string;
+  guestEmail?: string;
+  guestPhone?: string;
+  guestCountry?: string;
   message?: string;
   status: 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'CLOSED' | 'LOST';
   notes?: string;
@@ -157,6 +163,7 @@ export interface DashboardStats {
     availableRentals: number;
     availableSales: number;
     occupancyRate: number;
+    totalUsers?: number;
   };
   recentReservations: Array<{
     id: string;
@@ -187,5 +194,10 @@ export interface DashboardStats {
     month: string;
     revenue: number;
     count: number;
+  }>;
+  last12MonthsRevenue?: Array<{
+    month: string;
+    monthName: string;
+    revenue: number;
   }>;
 }

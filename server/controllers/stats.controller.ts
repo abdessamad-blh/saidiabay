@@ -13,4 +13,26 @@ export class StatsController {
       next(error);
     }
   }
+
+  async getMonthlyRevenue(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { year, month } = req.query;
+
+      if (!year || !month) {
+        return res.status(400).json({
+          success: false,
+          message: 'Year and month are required'
+        });
+      }
+
+      const revenue = await statsService.getMonthlyRevenue(
+        Number(year),
+        Number(month)
+      );
+
+      res.json({ success: true, data: { revenue } });
+    } catch (error) {
+      next(error);
+    }
+  }
 }

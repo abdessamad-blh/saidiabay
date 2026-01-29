@@ -4,6 +4,8 @@ import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import { Property, City } from '@/types';
 import { api } from '@/lib/utils/api';
+import MapPreviewWrapper from '../MapPreviewWrapper';
+import 'leaflet/dist/leaflet.css';
 
 interface PropertyFormProps {
   initialData?: Property;
@@ -158,6 +160,25 @@ const uploadToCloudinary = async (file: File): Promise<string> => {
   const removeImage = (index: number) => {
     const newImages = formData.images.filter((_, i) => i !== index);
     setFormData({ ...formData, images: newImages });
+  };
+
+  const handleSelectAllAmenities = () => {
+    const allSelected = formData.balcon && formData.climatisation && formData.gazon &&
+                        formData.machineLaver && formData.tv && formData.parking &&
+                        formData.piscine && formData.wifi && formData.cuisine;
+
+    setFormData({
+      ...formData,
+      balcon: !allSelected,
+      climatisation: !allSelected,
+      gazon: !allSelected,
+      machineLaver: !allSelected,
+      tv: !allSelected,
+      parking: !allSelected,
+      piscine: !allSelected,
+      wifi: !allSelected,
+      cuisine: !allSelected,
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -344,6 +365,7 @@ const uploadToCloudinary = async (file: File): Promise<string> => {
               step="any"
               value={formData.latitude}
               onChange={handleChange}
+              placeholder="33.5731"
             />
             <Input
               label="Longitude (optionnel)"
@@ -352,8 +374,22 @@ const uploadToCloudinary = async (file: File): Promise<string> => {
               step="any"
               value={formData.longitude}
               onChange={handleChange}
+              placeholder="-7.5898"
             />
           </div>
+
+          {/* Map Preview */}
+          {formData.latitude && formData.longitude && (
+            <div className="mt-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Aperçu de la carte
+              </label>
+              <MapPreviewWrapper
+                latitude={Number(formData.latitude)}
+                longitude={Number(formData.longitude)}
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -408,8 +444,23 @@ const uploadToCloudinary = async (file: File): Promise<string> => {
 
       {/* Équipements */}
       <div className="bg-gray-50 p-4 rounded-lg">
-        <h3 className="text-lg font-semibold mb-4">Équipements</h3>
-        
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold">Équipements</h3>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={handleSelectAllAmenities}
+            className="text-sm"
+          >
+            {formData.balcon && formData.climatisation && formData.gazon &&
+             formData.machineLaver && formData.tv && formData.parking &&
+             formData.piscine && formData.wifi && formData.cuisine
+              ? 'Tout désélectionner'
+              : 'Sélectionner tous'}
+          </Button>
+        </div>
+
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           {[
             { name: 'balcon', label: '🏡 Balcon' },

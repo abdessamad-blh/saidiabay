@@ -7,6 +7,7 @@ import propertyRoutes from './routes/property.routes';
 import cityRoutes from './routes/city.routes';
 import reservationRoutes from './routes/reservation.routes';
 import leadRoutes from './routes/lead.routes';
+import blockedDateRoutes from './routes/blockedDate.routes';
 import blogRoutes from './routes/blog.routes';
 import heroRoutes from './routes/hero.routes';
 import statsRoutes from './routes/stats.routes';
@@ -43,10 +44,10 @@ app.use('/api/properties', propertyRoutes);
 app.use('/api/cities', cityRoutes);
 app.use('/api/reservations', reservationRoutes);
 app.use('/api/leads', leadRoutes);
+app.use('/api/blocked-dates', blockedDateRoutes);
 app.use('/api/blogs', blogRoutes);
 app.use('/api/heroes', heroRoutes);
 app.use('/api/stats', statsRoutes);
-
 app.use('/api/hero-clicks', heroClickRoutes);
 
 

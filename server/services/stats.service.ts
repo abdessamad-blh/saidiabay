@@ -6,46 +6,67 @@ export class StatsService {
       totalProperties,
       totalReservations,
       totalLeads,
-      totalRevenue,
+      confirmedReservationsRevenue,
+      closedLeadsRevenue,
       availableRentals,
       availableSales,
       recentReservations,
       recentLeads,
       topProperties,
       revenueByMonth,
+      last12MonthsRevenue,
+      totalUsers,
     ] = await Promise.all([
       prisma.property.count(),
-      prisma.reservation.count({ where: { status: { in: ['CONFIRMED', 'PRE_RESERVED'] } } }),
+      prisma.reservation.count({ where: { status: { in: ['CONFIRMED', 'PENDING'] } } }),
       prisma.lead.count(),
-      prisma.sale.aggregate({ _sum: { amount: true } }),
+      // Only count CONFIRMED reservations for revenue
+      prisma.reservation.aggregate({
+        where: { status: 'CONFIRMED' },
+        _sum: { totalPrice: true }
+      }),
+      // Only count CLOSED leads for revenue
+      prisma.sale.aggregate({
+        where: { status: 'closed' },
+        _sum: { amount: true }
+      }),
       prisma.property.count({ where: { propertyType: 'RENT', status: 'AVAILABLE' } }),
       prisma.property.count({ where: { propertyType: 'SALE', status: 'AVAILABLE' } }),
       this.getRecentReservations(),
       this.getRecentLeads(),
       this.getTopProperties(),
       this.getRevenueByMonth(),
+      this.getLast12MonthsRevenue(),
+      prisma.user.count(),
     ]);
 
     // Calculate occupancy rate for rentals
     const totalRentalProperties = await prisma.property.count({ where: { propertyType: 'RENT' } });
-    const occupancyRate = totalRentalProperties > 0 
+    const occupancyRate = totalRentalProperties > 0
       ? ((totalReservations / totalRentalProperties) * 100).toFixed(1)
       : '0';
+
+    // Calculate total net revenue (confirmed reservations + closed leads)
+    const totalNetRevenue =
+      (confirmedReservationsRevenue._sum.totalPrice || 0) +
+      (closedLeadsRevenue._sum.amount || 0);
 
     return {
       overview: {
         totalProperties,
         totalReservations,
         totalLeads,
-        totalRevenue: totalRevenue._sum.amount || 0,
+        totalRevenue: totalNetRevenue,
         availableRentals,
         availableSales,
         occupancyRate: parseFloat(occupancyRate),
+        totalUsers,
       },
       recentReservations,
       recentLeads,
       topProperties,
       revenueByMonth,
+      last12MonthsRevenue,
     };
   }
 
@@ -81,9 +102,9 @@ export class StatsService {
     return leads.map((lead) => ({
       id: lead.id,
       propertyTitle: lead.property.title,
-      name: lead.name,
-      email: lead.email,
-      phone: lead.phone,
+      name: lead.guestName,
+      email: lead.guestEmail,
+      phone: lead.guestPhone,
       status: lead.status,
       createdAt: lead.createdAt,
     }));
@@ -92,7 +113,7 @@ export class StatsService {
   private async getTopProperties() {
     const reservationStats = await prisma.reservation.groupBy({
       by: ['propertyId'],
-      where: { status: { in: ['CONFIRMED', 'PRE_RESERVED'] } },
+      where: { status: { in: ['CONFIRMED', 'PENDING'] } },
       _count: { id: true },
       _sum: { totalPrice: true },
       orderBy: { _sum: { totalPrice: 'desc' } },
@@ -137,6 +158,154 @@ export class StatsService {
       }
       monthlyData[monthKey].revenue += sale.amount;
       monthlyData[monthKey].count += 1;
+    });
+
+    return Object.values(monthlyData).sort((a, b) => a.month.localeCompare(b.month));
+  }
+
+  async getMonthlyRevenue(year: number, month: number) {
+    // Create date range for the specified month
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0, 23, 59, 59, 999);
+
+    // Get CONFIRMED reservations for the month
+    const reservations = await prisma.reservation.findMany({
+      where: {
+        status: 'CONFIRMED',
+        createdAt: {
+          gte: startDate,
+          lte: endDate
+        }
+      },
+      include: {
+        property: {
+          select: {
+            title: true,
+            listingType: true
+          }
+        }
+      }
+    });
+
+    // Get CLOSED sales (from Sale model) for the month
+    const sales = await prisma.sale.findMany({
+      where: {
+        status: 'closed',
+        createdAt: {
+          gte: startDate,
+          lte: endDate
+        }
+      },
+      select: {
+        propertyId: true,
+        amount: true
+      }
+    });
+
+    // Get property titles for sales
+    const propertyIds = [...new Set(sales.map(s => s.propertyId))];
+    const properties = await prisma.property.findMany({
+      where: { id: { in: propertyIds } },
+      select: { id: true, title: true }
+    });
+    const propertyMap = new Map(properties.map(p => [p.id, p.title]));
+
+    // Group revenue by property
+    const revenueByProperty: Record<string, {
+      propertyTitle: string;
+      type: string;
+      count: number;
+      revenue: number;
+    }> = {};
+
+    // Add confirmed reservations
+    reservations.forEach((reservation) => {
+      const key = reservation.propertyId;
+      if (!revenueByProperty[key]) {
+        revenueByProperty[key] = {
+          propertyTitle: reservation.property.title,
+          type: 'Réservation',
+          count: 0,
+          revenue: 0
+        };
+      }
+      revenueByProperty[key].count += 1;
+      revenueByProperty[key].revenue += reservation.totalPrice;
+    });
+
+    // Add closed sales
+    sales.forEach((sale) => {
+      const key = `sale_${sale.propertyId}`;
+      if (!revenueByProperty[key]) {
+        revenueByProperty[key] = {
+          propertyTitle: propertyMap.get(sale.propertyId) || 'Propriété inconnue',
+          type: 'Vente',
+          count: 0,
+          revenue: 0
+        };
+      }
+      revenueByProperty[key].count += 1;
+      revenueByProperty[key].revenue += sale.amount;
+    });
+
+    return Object.values(revenueByProperty);
+  }
+
+  private async getLast12MonthsRevenue() {
+    const now = new Date();
+    const twelveMonthsAgo = new Date();
+    twelveMonthsAgo.setMonth(now.getMonth() - 11);
+    twelveMonthsAgo.setDate(1);
+    twelveMonthsAgo.setHours(0, 0, 0, 0);
+
+    // Get CONFIRMED reservations from last 12 months
+    const reservations = await prisma.reservation.findMany({
+      where: {
+        status: 'CONFIRMED',
+        createdAt: { gte: twelveMonthsAgo }
+      },
+      select: { createdAt: true, totalPrice: true }
+    });
+
+    // Get CLOSED sales (leads) from last 12 months
+    const sales = await prisma.sale.findMany({
+      where: {
+        status: 'closed',
+        createdAt: { gte: twelveMonthsAgo }
+      },
+      select: { createdAt: true, amount: true }
+    });
+
+    // Initialize all 12 months with zero revenue
+    const monthlyData: Record<string, { month: string; monthName: string; revenue: number }> = {};
+
+    for (let i = 0; i < 12; i++) {
+      const date = new Date(now.getFullYear(), now.getMonth() - (11 - i), 1);
+      const monthKey = date.toISOString().substring(0, 7); // YYYY-MM format
+      const monthNames = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
+      const monthName = monthNames[date.getMonth()];
+
+      monthlyData[monthKey] = {
+        month: monthKey,
+        monthName: `${monthName} ${date.getFullYear().toString().slice(-2)}`,
+        revenue: 0
+      };
+    }
+
+    // Add reservation revenue
+    reservations.forEach((reservation) => {
+      const monthKey = reservation.createdAt.toISOString().substring(0, 7);
+      if (monthlyData[monthKey]) {
+        monthlyData[monthKey].revenue += reservation.totalPrice;
+      }
+    });
+
+    // Add sales revenue
+    sales.forEach((sale) => {
+      const monthKey = sale.createdAt.toISOString().substring(0, 7);
+      if (monthlyData[monthKey]) {
+        monthlyData[monthKey].revenue += sale.amount;
+      }
     });
 
     return Object.values(monthlyData).sort((a, b) => a.month.localeCompare(b.month));

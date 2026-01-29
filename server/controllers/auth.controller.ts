@@ -78,8 +78,8 @@ export class AuthController {
 
   async register(req: Request, res: Response, next: NextFunction) {
     try {
-      const { name, email, username, password } = req.body;
-      const result = await authService.register({ name, email, username, password });
+      const { name, email, username, phone, password } = req.body;
+      const result = await authService.register({ name, email, username, phone, password });
 
       this.setSessionCookie(res, result.session);
 
@@ -113,6 +113,7 @@ export class AuthController {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
+        path: '/',
       });
 
       res.json({ message: 'Déconnexion réussie' });
@@ -319,6 +320,7 @@ export class AuthController {
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       maxAge: 24 * 60 * 60 * 1000, // 24 heures
+      path: '/', // Ensure cookie is available for all paths
     });
   }
 }

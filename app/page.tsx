@@ -345,18 +345,10 @@ function PropertyCard({
           </div>
         </div>
 
-        <Button
-          onClick={() => onReservation(property)}
-          className="w-full"
-          size="lg"
-        >
-          {type === 'LOCATION' ? '📅 Réserver' : '💼 Je suis intéressé'}
-        </Button>
-
         <Link href={`/property/${property.id}`}>
-          <p className="text-center text-blue-600 hover:text-blue-700 mt-4 text-sm font-medium cursor-pointer">
+          <Button className="w-full" size="lg">
             Voir les détails →
-          </p>
+          </Button>
         </Link>
       </div>
     </div>

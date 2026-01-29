@@ -28,13 +28,13 @@ export class AuthService {
 
     // Si ADMIN: Envoyer OTP
     if (user.role === "ADMIN") {
-      // Toujours envoyer à saidiavibe@gmail.com pour admin
-      await otpService.createOTP("saidiavibe@gmail.com", "LOGIN");
+      // Envoyer OTP à l'email de l'admin
+      await otpService.createOTP(user.email, "LOGIN");
 
       return {
         requiresOTP: true,
         userId: user.id,
-        message: "Code OTP envoyé à saidiavibe@gmail.com",
+        message: `Code OTP envoyé à ${user.email}`,
       };
     }
 
@@ -64,8 +64,8 @@ export class AuthService {
       throw new AppError("Accès non autorisé", 403);
     }
 
-    // Vérifier OTP
-    await otpService.verifyOTP("saidiavibe@gmail.com", otpCode, "LOGIN");
+    // Vérifier OTP avec l'email de l'admin
+    await otpService.verifyOTP(user.email, otpCode, "LOGIN");
 
     // Créer session
     const session = await sessionService.createSession(user.id);
@@ -87,6 +87,7 @@ export class AuthService {
     name: string;
     email: string;
     username?: string;
+    phone?: string;
     password: string;
   }) {
     const existingUser = await prisma.user.findFirst({
@@ -109,6 +110,7 @@ export class AuthService {
         name: data.name,
         email: data.email,
         username: data.username,
+        phone: data.phone,
         password: hashedPassword,
       },
       select: {
@@ -116,6 +118,7 @@ export class AuthService {
         name: true,
         email: true,
         username: true,
+        phone: true,
         role: true,
       },
     });
@@ -334,6 +337,7 @@ export class AuthService {
         name: true,
         email: true,
         username: true,
+        phone: true,
         role: true,
         createdAt: true,
       },

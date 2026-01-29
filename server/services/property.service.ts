@@ -71,7 +71,7 @@ export class PropertyService {
           select: { id: true, name: true, email: true },
         },
         reservations: {
-          where: { status: { in: ['CONFIRMED', 'PRE_RESERVED'] } },
+          where: { status: { in: ['CONFIRMED', 'PENDING'] } },
           select: { startDate: true, endDate: true, status: true },
         },
       },

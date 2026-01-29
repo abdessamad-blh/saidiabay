@@ -35,8 +35,8 @@ export class SessionService {
       throw new AppError('Session expirée', 401);
     }
 
-    // Vérifier inactivité (5 minutes)
-    const inactivityLimit = new Date(Date.now() - 5 * 60 * 1000);
+    // Vérifier inactivité (15 minutes)
+    const inactivityLimit = new Date(Date.now() - 15 * 60 * 1000);
     if (session.lastActivity < inactivityLimit) {
       await this.deleteSession(token);
       throw new AppError('Session expirée par inactivité', 401);
@@ -71,7 +71,7 @@ export class SessionService {
       where: {
         OR: [
           { expiresAt: { lt: new Date() } },
-          { lastActivity: { lt: new Date(Date.now() - 5 * 60 * 1000) } },
+          { lastActivity: { lt: new Date(Date.now() - 15 * 60 * 1000) } },
         ],
       },
     });

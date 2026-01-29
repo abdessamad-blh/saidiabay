@@ -1,18 +1,20 @@
 'use client';
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import Calendar from 'react-calendar';
-import 'react-calendar/dist/Calendar.css';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { useToast } from '@/components/ui/Toast';
 import { Property } from '@/types';
 import { formatCurrency } from '@/lib/utils/format';
-import { api } from '@/lib/utils/api';
+import PropertyCalendar from '@/components/PropertyCalendar';
+import ReservationModal from '@/components/ReservationModal';
 
-type ValuePiece = Date | null;
-type Value = ValuePiece | [ValuePiece, ValuePiece];
+interface SelectedDates {
+  startDate: Date;
+  endDate: Date;
+  nights: number;
+  totalPrice: number;
+}
 
 export default function PropertyDetailPage() {
   const params = useParams();
@@ -20,44 +22,14 @@ export default function PropertyDetailPage() {
   const { showToast } = useToast();
   const [property, setProperty] = useState<Property | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [dateRange, setDateRange] = useState<Value>([null, null]);
-  const [blockedDates, setBlockedDates] = useState<Date[]>([]);
-  const [showReservationModal, setShowReservationModal] = useState(false);
-  const [showAuthChoice, setShowAuthChoice] = useState(false);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [totalPrice, setTotalPrice] = useState(0);
-
-  // Guest form data
-  const [guestData, setGuestData] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    message: '',
-  });
+  const [selectedDates, setSelectedDates] = useState<SelectedDates | null>(null);
+  const [showModal, setShowModal] = useState(false);
+  const [reservationMade, setReservationMade] = useState(false);
 
   useEffect(() => {
     loadProperty();
-    checkAuth();
+    checkIfAlreadyReserved();
   }, [params.id]);
-
-  useEffect(() => {
-    if (property && dateRange && Array.isArray(dateRange)) {
-      const [start, end] = dateRange;
-      if (start && end) {
-        const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-        setTotalPrice(property.price * days);
-      }
-    }
-  }, [dateRange, property]);
-
-  const checkAuth = async () => {
-    try {
-      const response = await api.get('/api/auth/me');
-      setIsLoggedIn(!!(response as any).data);
-    } catch {
-      setIsLoggedIn(false);
-    }
-  };
 
   const loadProperty = async () => {
     try {
@@ -66,11 +38,6 @@ export default function PropertyDetailPage() {
       );
       const data = await response.json();
       setProperty(data.data);
-
-      // Load blocked dates if it's a rental property
-      if (data.data.listingType === 'LOCATION') {
-        loadBlockedDates(params.id as string);
-      }
     } catch (error) {
       showToast('Erreur de chargement', 'error');
     } finally {
@@ -78,131 +45,65 @@ export default function PropertyDetailPage() {
     }
   };
 
-  const loadBlockedDates = async (propertyId: string) => {
-    try {
-      const response: any = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/api/properties/${propertyId}/availability`
-      );
-      const data = await response.json();
-      
-      // Convert blocked dates to Date objects
-      const blocked: Date[] = [];
-      data.data.blockedDates?.forEach((range: any) => {
-        const start = new Date(range.startDate);
-        const end = new Date(range.endDate);
-        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-          blocked.push(new Date(d));
+  const checkIfAlreadyReserved = () => {
+    // Check localStorage for reservation status
+    const reservation = localStorage.getItem(`reservation_${params.id}`);
+    if (reservation) {
+      try {
+        const data = JSON.parse(reservation);
+
+        // Check if 24 hours have passed since reservation
+        const reservationTime = new Date(data.timestamp).getTime();
+        const currentTime = Date.now();
+        const hoursPassed = (currentTime - reservationTime) / (1000 * 60 * 60);
+
+        if (hoursPassed >= 24) {
+          // Expired - remove and show normal view
+          localStorage.removeItem(`reservation_${params.id}`);
+          setReservationMade(false);
+          return;
         }
-      });
-      setBlockedDates(blocked);
-    } catch (error) {
-      console.error('Erreur chargement disponibilité:', error);
+
+        // Still valid - show success message
+        setReservationMade(true);
+      } catch (error) {
+        console.error('Error loading reservation from localStorage:', error);
+        // If error parsing, remove the corrupted data
+        localStorage.removeItem(`reservation_${params.id}`);
+      }
     }
-  };
-
-  const tileDisabled = ({ date }: { date: Date }) => {
-    // Disable past dates
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    if (date < today) return true;
-
-    // Disable blocked dates
-    return blockedDates.some(
-      (blocked) =>
-        blocked.getFullYear() === date.getFullYear() &&
-        blocked.getMonth() === date.getMonth() &&
-        blocked.getDate() === date.getDate()
-    );
-  };
-
-  const tileClassName = ({ date }: { date: Date }) => {
-    const isBlocked = blockedDates.some(
-      (blocked) =>
-        blocked.getFullYear() === date.getFullYear() &&
-        blocked.getMonth() === date.getMonth() &&
-        blocked.getDate() === date.getDate()
-    );
-    return isBlocked ? 'blocked-date' : '';
   };
 
   const handleReserveClick = () => {
-    if (!dateRange || !Array.isArray(dateRange) || !dateRange[0] || !dateRange[1]) {
+    if (!selectedDates && property?.listingType === 'LOCATION') {
       showToast('Veuillez sélectionner des dates', 'error');
       return;
     }
-
-    if (isLoggedIn) {
-      setShowReservationModal(true);
-    } else {
-      setShowAuthChoice(true);
-    }
+    setShowModal(true);
   };
 
-  const handleContinueWithoutAccount = () => {
-    setShowAuthChoice(false);
-    setShowReservationModal(true);
+  const handleReservationSuccess = () => {
+    // Save to localStorage
+    localStorage.setItem(`reservation_${params.id}`, JSON.stringify({
+      timestamp: new Date().toISOString(),
+      dates: selectedDates,
+    }));
+    setReservationMade(true);
+    setShowModal(false);
+    showToast('Réservation envoyée avec succès!', 'success');
   };
 
-  const handleContinueWithAccount = () => {
-    router.push(`/login?redirect=/property/${params.id}`);
-  };
+  const getWhatsAppLink = () => {
+    if (!property) return '';
 
-  const handleSubmitReservation = async (e: React.FormEvent) => {
-    e.preventDefault();
+    const phone = '212605911322'; // Format international
+    let message = `Bonjour, je suis intéressé(e) par votre propriété "${property.title}" située à ${property.address}.`;
 
-    if (!dateRange || !Array.isArray(dateRange) || !dateRange[0] || !dateRange[1]) {
-      showToast('Dates invalides', 'error');
-      return;
+    if (property.listingType === 'LOCATION' && selectedDates) {
+      message += `\n\nDates souhaitées:\nArrivée: ${selectedDates.startDate.toLocaleDateString('fr-FR')}\nDépart: ${selectedDates.endDate.toLocaleDateString('fr-FR')}\nTotal: ${selectedDates.nights} nuit(s) - ${selectedDates.totalPrice.toLocaleString('fr-MA')} DH`;
     }
 
-    try {
-      const reservationData = {
-        propertyId: params.id,
-        startDate: dateRange[0].toISOString(),
-        endDate: dateRange[1].toISOString(),
-        totalPrice,
-        ...(isLoggedIn ? {} : guestData),
-      };
-
-      await api.post('/api/reservations', reservationData);
-      showToast('Demande de réservation envoyée !', 'success');
-      setShowReservationModal(false);
-      
-      // Show contact options after reservation
-      setTimeout(() => {
-        showContactOptions();
-      }, 1000);
-    } catch (error: any) {
-      showToast(error.message || 'Erreur de réservation', 'error');
-    }
-  };
-
-  const showContactOptions = () => {
-    if (!property) return;
-
-    const propertyLink = window.location.href;
-    const whatsappMessage = `Bonjour, je souhaite réserver ce bien : ${propertyLink}`;
-    const whatsappUrl = `https://wa.me/212605911322?text=${encodeURIComponent(whatsappMessage)}`;
-
-    if (confirm('Voulez-vous contacter le propriétaire maintenant ?\n\nCliquez OK pour WhatsApp ou Annuler pour appeler.')) {
-      window.open(whatsappUrl, '_blank');
-    } else {
-      window.location.href = 'tel:+212605911322';
-    }
-  };
-
-  const handleSaleInquiry = () => {
-    if (!property) return;
-
-    const propertyLink = window.location.href;
-    const whatsappMessage = `Bonjour, je suis intéressé par ce bien : ${propertyLink}`;
-    const whatsappUrl = `https://wa.me/212605911322?text=${encodeURIComponent(whatsappMessage)}`;
-
-    if (confirm('Voulez-vous nous contacter maintenant ?\n\nCliquez OK pour WhatsApp ou Annuler pour appeler.')) {
-      window.open(whatsappUrl, '_blank');
-    } else {
-      window.location.href = 'tel:+212605911322';
-    }
+    return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
   };
 
   if (isLoading) {
@@ -218,7 +119,7 @@ export default function PropertyDetailPage() {
   if (property.sallesDeBain) features.push({ icon: '🚿', text: `${property.sallesDeBain} salles de bain` });
   if (property.surface) features.push({ icon: '📐', text: `${property.surface}m²` });
   if (property.anneeCons) features.push({ icon: '📅', text: `Année ${property.anneeCons}` });
-  if (property.garage) features.push({ icon: '🚗', text: 'Garage' });
+  if (property.garage) features.push({ icon: '🚗', text: 'Garage` });
 
   const amenities = [];
   if (property.balcon) amenities.push({ icon: '🌅', text: 'Balcon' });
@@ -352,218 +253,136 @@ export default function PropertyDetailPage() {
 
           {/* Right Column - Reservation/Contact */}
           <div className="lg:col-span-1">
-            <div className="sticky top-24">
-              {property.listingType === 'LOCATION' ? (
-                <Card>
-                  <h3 className="text-xl font-bold mb-4">Réserver ce bien</h3>
-                  
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Sélectionnez vos dates
-                    </label>
-                    <Calendar
-                      selectRange
-                      onChange={setDateRange}
-                      value={dateRange}
-                      tileDisabled={tileDisabled}
-                      tileClassName={tileClassName}
-                      minDate={new Date()}
-                      className="w-full border rounded-lg"
-                    />
-                  </div>
-
-                  {dateRange && Array.isArray(dateRange) && dateRange[0] && dateRange[1] && (
-                    <div className="bg-blue-50 p-4 rounded-lg mb-4">
-                      <div className="flex justify-between mb-2">
-                        <span>Arrivée:</span>
-                        <span className="font-semibold">
-                          {dateRange[0].toLocaleDateString('fr-FR')}
-                        </span>
-                      </div>
-                      <div className="flex justify-between mb-2">
-                        <span>Départ:</span>
-                        <span className="font-semibold">
-                          {dateRange[1].toLocaleDateString('fr-FR')}
-                        </span>
-                      </div>
-                      <div className="flex justify-between pt-2 border-t border-blue-200">
-                        <span className="font-bold">Total:</span>
-                        <span className="font-bold text-blue-600">
-                          {formatCurrency(totalPrice)}
-                        </span>
-                      </div>
-                    </div>
+            <div className="sticky top-24 space-y-4">
+              {!reservationMade ? (
+                <>
+                  {/* For LOCATION properties - Show Calendar */}
+                  {property.listingType === 'LOCATION' && (
+                    <>
+                      <PropertyCalendar
+                        property={property}
+                        onDatesSelected={(dates) => setSelectedDates(dates)}
+                      />
+                      <Button
+                        className="w-full"
+                        onClick={handleReserveClick}
+                        disabled={!selectedDates}
+                      >
+                        Réserver
+                      </Button>
+                    </>
                   )}
 
-                  <Button
-                    className="w-full"
-                    onClick={handleReserveClick}
-                    disabled={!dateRange || !Array.isArray(dateRange) || !dateRange[0] || !dateRange[1]}
-                  >
-                    Réserver maintenant
-                  </Button>
-
-                  <p className="text-xs text-gray-500 text-center mt-3">
-                    Vous ne serez pas débité immédiatement
-                  </p>
-                </Card>
+                  {/* For VENTE properties - Show Interest Button */}
+                  {property.listingType === 'VENTE' && (
+                    <Card>
+                      <h3 className="text-xl font-bold mb-4">Intéressé par ce bien ?</h3>
+                      <p className="text-gray-600 mb-4">
+                        Contactez-nous pour plus d'informations ou pour organiser une visite.
+                      </p>
+                      <Button className="w-full" onClick={handleReserveClick}>
+                        Je suis intéressé
+                      </Button>
+                    </Card>
+                  )}
+                </>
               ) : (
+                /* Show after successful reservation/interest */
                 <Card>
-                  <h3 className="text-xl font-bold mb-4">Intéressé par ce bien ?</h3>
-                  <p className="text-gray-600 mb-4">
-                    Contactez-nous pour plus d'informations ou pour organiser une visite.
-                  </p>
-                  <Button className="w-full" onClick={handleSaleInquiry}>
-                    Nous contacter
-                  </Button>
+                  <div className="text-center space-y-4">
+                    <div className="text-green-600 text-5xl">✓</div>
+                    <div>
+                      <h3 className="text-xl font-bold text-gray-900 mb-2">
+                        {property.listingType === 'LOCATION' ? 'Réservation envoyée!' : 'Intérêt enregistré!'}
+                      </h3>
+                      {property.listingType === 'LOCATION' && selectedDates && (
+                        <p className="text-sm text-gray-600 mb-2">
+                          Du {selectedDates.startDate.toLocaleDateString('fr-FR')} au {selectedDates.endDate.toLocaleDateString('fr-FR')}
+                        </p>
+                      )}
+                      <p className="text-gray-600">
+                        Le propriétaire vous contactera bientôt.
+                      </p>
+                    </div>
+
+                    {/* Contact Buttons */}
+                    <div className="space-y-3 pt-4 border-t">
+                      <p className="text-sm font-medium text-gray-700">
+                        Contactez directement :
+                      </p>
+
+                      <a
+                        href={getWhatsAppLink()}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-center gap-2 w-full py-3 px-6 bg-green-500 hover:bg-green-600 text-white font-semibold rounded-lg transition-colors"
+                      >
+                        <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
+                        </svg>
+                        WhatsApp
+                      </a>
+
+                      <a
+                        href={`mailto:contact@example.com?subject=Propriété: ${encodeURIComponent(property.title)}`}
+                        className="flex items-center justify-center gap-2 w-full py-3 px-6 bg-gray-600 hover:bg-gray-700 text-white font-semibold rounded-lg transition-colors"
+                      >
+                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                        Email
+                      </a>
+
+                      <a
+                        href="tel:0605911322"
+                        className="flex items-center justify-center gap-2 w-full py-3 px-6 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors"
+                      >
+                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                        </svg>
+                        0605911322
+                      </a>
+                    </div>
+                  </div>
                 </Card>
               )}
 
-              {/* Contact Info */}
-              <Card className="mt-4">
-                <h4 className="font-semibold mb-3">Contactez-nous directement</h4>
-                <div className="space-y-2">
-                  <a
-                    href="tel:+212605911322"
-                    className="flex items-center gap-2 text-blue-600 hover:underline"
-                  >
-                    📞 0605911322
-                  </a>
-                  <a
-                    href={`https://wa.me/212605911322?text=${encodeURIComponent(
-                      property.listingType === 'LOCATION'
-                        ? `Bonjour, je souhaite réserver ce bien : ${window.location.href}`
-                        : `Bonjour, je suis intéressé par ce bien : ${window.location.href}`
-                    )}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 text-green-600 hover:underline"
-                  >
-                    💬 WhatsApp
-                  </a>
-                </div>
-              </Card>
+              {/* Contact Info Card (always visible) */}
+              {!reservationMade && (
+                <Card>
+                  <h4 className="font-semibold mb-3">Contactez-nous directement</h4>
+                  <div className="space-y-2">
+                    <a
+                      href="tel:0605911322"
+                      className="flex items-center gap-2 text-blue-600 hover:underline"
+                    >
+                      📞 0605911322
+                    </a>
+                    <a
+                      href={getWhatsAppLink()}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 text-green-600 hover:underline"
+                    >
+                      💬 WhatsApp
+                    </a>
+                  </div>
+                </Card>
+              )}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Auth Choice Modal */}
-      {showAuthChoice && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <Card className="max-w-md w-full">
-            <h3 className="text-xl font-bold mb-4">Comment souhaitez-vous continuer ?</h3>
-            <div className="space-y-3">
-              <Button className="w-full" onClick={handleContinueWithAccount}>
-                Continuer avec un compte
-              </Button>
-              <Button
-                variant="ghost"
-                className="w-full"
-                onClick={handleContinueWithoutAccount}
-              >
-                Continuer sans compte
-              </Button>
-              <Button
-                variant="ghost"
-                className="w-full"
-                onClick={() => setShowAuthChoice(false)}
-              >
-                Annuler
-              </Button>
-            </div>
-          </Card>
-        </div>
-      )}
-
       {/* Reservation Modal */}
-      {showReservationModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <Card className="max-w-md w-full my-8">
-            <h3 className="text-xl font-bold mb-4">Confirmer la réservation</h3>
-
-            <form onSubmit={handleSubmitReservation} className="space-y-4">
-              {!isLoggedIn && (
-                <>
-                  <Input
-                    label="Nom complet"
-                    value={guestData.name}
-                    onChange={(e) => setGuestData({ ...guestData, name: e.target.value })}
-                    required
-                  />
-                  <Input
-                    label="Email"
-                    type="email"
-                    value={guestData.email}
-                    onChange={(e) => setGuestData({ ...guestData, email: e.target.value })}
-                    required
-                  />
-                  <Input
-                    label="Téléphone"
-                    type="tel"
-                    value={guestData.phone}
-                    onChange={(e) => setGuestData({ ...guestData, phone: e.target.value })}
-                    required
-                  />
-                </>
-              )}
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Message (optionnel)
-                </label>
-                <textarea
-                  value={guestData.message}
-                  onChange={(e) => setGuestData({ ...guestData, message: e.target.value })}
-                  rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  placeholder="Questions ou demandes spéciales..."
-                />
-              </div>
-
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <div className="flex justify-between mb-2">
-                  <span>Dates:</span>
-                  <span className="font-semibold">
-                    {dateRange && Array.isArray(dateRange) && dateRange[0]
-                      ? `${dateRange[0].toLocaleDateString('fr-FR')} - ${dateRange[1]?.toLocaleDateString('fr-FR')}`
-                      : ''}
-                  </span>
-                </div>
-                <div className="flex justify-between pt-2 border-t">
-                  <span className="font-bold">Total:</span>
-                  <span className="font-bold text-blue-600">
-                    {formatCurrency(totalPrice)}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <Button type="submit" className="flex-1">
-                  Confirmer
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => setShowReservationModal(false)}
-                >
-                  Annuler
-                </Button>
-              </div>
-            </form>
-          </Card>
-        </div>
-      )}
-
-      <style jsx global>{`
-        .blocked-date {
-          background-color: #fee2e2 !important;
-          color: #991b1b !important;
-        }
-        .react-calendar__tile--active {
-          background-color: #3b82f6 !important;
-        }
-      `}</style>
+      <ReservationModal
+        isOpen={showModal}
+        onClose={() => setShowModal(false)}
+        type={property.listingType === 'LOCATION' ? 'rent' : 'sale'}
+        property={property}
+        selectedDates={selectedDates || undefined}
+        onSuccess={handleReservationSuccess}
+      />
     </div>
   );
 }

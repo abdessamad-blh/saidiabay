@@ -192,64 +192,77 @@ model Reservation {
   id          String            @id @default(cuid())
   propertyId  String
   property    Property          @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  
+
+  // Optional user (if logged in)
+  userId      String?
+  user        User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  // Guest info (for non-logged users)
+  guestName   String?
+  guestEmail  String?
+  guestPhone  String?
+  guestCountry String?
+
   // Date range
   startDate   DateTime
   endDate     DateTime
-  
-  // Guest info (peut être null si utilisateur connecté)
-  guestId     String?           // ID aléatoire pour invités
-  guestName   String
-  guestEmail  String
-  guestPhone  String
-  message     String?           @db.Text
-  
-  // Management
-  status      ReservationStatus @default(PRE_RESERVED)
+  nights      Int              // Calculated number of nights
+
+  // Pricing
   totalPrice  Float
+
+  // Status
+  status      ReservationStatus @default(PENDING)
+
+  // Timestamps
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
-  
-  // Optional user (si connecté)
-  userId      String?
-  user        User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
-  
+
   @@index([propertyId])
   @@index([userId])
-  @@index([guestId])
   @@index([startDate, endDate])
   @@index([status])
+
+  @@map("reservations")
 }
 
 enum ReservationStatus {
-  PRE_RESERVED  // Pré-réservé
-  CONFIRMED     // Confirmé
-  CANCELLED     // Annulé
-  COMPLETED     // Terminé
+  PENDING
+  CONFIRMED
+  CANCELLED
 }
 
 model Lead {
-  id          String   @id @default(cuid())
+  id          String     @id @default(cuid())
   propertyId  String
-  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  
-  name        String
-  email       String
-  phone       String
-  message     String?  @db.Text
-  
+  property    Property   @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  // Optional user (if logged in)
+  userId      String?
+  user        User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  // Guest info (for non-logged users)
+  guestName   String?
+  guestEmail  String?
+  guestPhone  String?
+  guestCountry String?
+
+  // Additional info
+  message     String?    @db.Text
+
+  // Status
   status      LeadStatus @default(NEW)
-  notes       String?    @db.Text
+
+  // Timestamps
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
-  
-  userId      String?
-  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  
+
   @@index([propertyId])
   @@index([userId])
   @@index([status])
   @@index([createdAt])
+
+  @@map("leads")
 }
 
 enum LeadStatus {

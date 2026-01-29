@@ -7,14 +7,22 @@ import { formatCurrency, formatDate } from '@/lib/utils/format';
 import { Reservation } from '@/types';
 import { useToast } from '@/components/ui/Toast';
 
+// Status mapping for display
+const STATUS_DISPLAY: Record<string, string> = {
+  'PENDING': 'Pré-réservée',
+  'CONFIRMED': 'Confirmée',
+  'CANCELLED': 'Annulée',
+};
+
 export default function ReservationsPage() {
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [filter, setFilter] = useState<'ALL' | 'PRE_RESERVED' | 'CONFIRMED' | 'CANCELLED'>('ALL');
+  const [filter, setFilter] = useState<'ALL' | 'PENDING' | 'CONFIRMED' | 'CANCELLED'>('PENDING');
   const { showToast } = useToast();
 
   useEffect(() => {
     loadReservations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter]);
 
   const loadReservations = async () => {
@@ -64,33 +72,34 @@ export default function ReservationsPage() {
       </div>
 
       <div className="flex gap-2">
-        <Button 
-          variant={filter === 'ALL' ? 'primary' : 'ghost'}
-          onClick={() => setFilter('ALL')}
-          size="sm"
-        >
-          Toutes
-        </Button>
-        <Button 
-          variant={filter === 'PRE_RESERVED' ? 'primary' : 'ghost'}
-          onClick={() => setFilter('PRE_RESERVED')}
+        
+        <Button
+          variant={filter === 'PENDING' ? 'primary' : 'ghost'}
+          onClick={() => setFilter('PENDING')}
           size="sm"
         >
           Pré-réservées
         </Button>
-        <Button 
+        <Button
           variant={filter === 'CONFIRMED' ? 'primary' : 'ghost'}
           onClick={() => setFilter('CONFIRMED')}
           size="sm"
         >
           Confirmées
         </Button>
-        <Button 
+        <Button
           variant={filter === 'CANCELLED' ? 'primary' : 'ghost'}
           onClick={() => setFilter('CANCELLED')}
           size="sm"
         >
           Annulées
+        </Button>
+        <Button
+          variant={filter === 'ALL' ? 'primary' : 'ghost'}
+          onClick={() => setFilter('ALL')}
+          size="sm"
+        >
+          Toutes
         </Button>
       </div>
 
@@ -146,41 +155,38 @@ export default function ReservationsPage() {
 
                 <div className="flex flex-col gap-2">
                   <span className={`px-3 py-1 text-sm rounded text-center ${
-                    reservation.status === 'CONFIRMED' 
-                      ? 'bg-green-100 text-green-800' 
-                      : reservation.status === 'PRE_RESERVED'
-                      ? 'bg-yellow-100 text-yellow-800'
-                      : 'bg-red-100 text-red-800'
+                    reservation.status === 'CONFIRMED'
+                      ? 'bg-green-100 text-green-800'
+                      : reservation.status === 'PENDING'
+                        ? 'bg-yellow-100 text-yellow-800'
+                        : reservation.status === 'PRE_RESERVED'
+                          ? 'bg-yellow-100 text-yellow-800'
+                          : 'bg-red-100 text-red-800'
                   }`}>
-                    {reservation.status}
+                    {STATUS_DISPLAY[reservation.status] || reservation.status}
                   </span>
 
-                  {reservation.status === 'PRE_RESERVED' && (
+                  {reservation.status !== 'CANCELLED' && (
                     <>
-                      <Button 
-                        size="sm" 
-                        onClick={() => handleUpdateStatus(reservation.id, 'CONFIRMED')}
+                      <p className="text-xs text-gray-600 mb-1">Changer le statut</p>
+                      <select
+                        value={reservation.status}
+                        onChange={(e) => {
+                          if (e.target.value === 'CANCELLED') {
+                            if (confirm('Êtes-vous sûr de vouloir annuler cette réservation ? Les dates seront débloquées.')) {
+                              handleCancel(reservation.id);
+                            }
+                          } else {
+                            handleUpdateStatus(reservation.id, e.target.value);
+                          }
+                        }}
+                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
-                        Confirmer
-                      </Button>
-                      <Button 
-                        size="sm" 
-                        variant="danger"
-                        onClick={() => handleCancel(reservation.id)}
-                      >
-                        Annuler
-                      </Button>
+                        <option value="PENDING">Pré-réservée</option>
+                        <option value="CONFIRMED">Confirmée</option>
+                        <option value="CANCELLED">Annulée</option>
+                      </select>
                     </>
-                  )}
-
-                  {reservation.status === 'CONFIRMED' && (
-                    <Button 
-                      size="sm" 
-                      variant="danger"
-                      onClick={() => handleCancel(reservation.id)}
-                    >
-                      Annuler
-                    </Button>
                   )}
                 </div>
               </div>

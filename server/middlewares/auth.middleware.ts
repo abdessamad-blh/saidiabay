@@ -58,6 +58,38 @@ export const authenticate = async (
   }
 };
 
+// Optional authentication - sets userId if user is logged in, but doesn't block if not
+export const optionalAuthenticate = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    // Check for session cookie
+    const sessionToken = req.cookies.session;
+
+    if (sessionToken) {
+      // Verify session token
+      const session = await prisma.session.findUnique({
+        where: { token: sessionToken },
+        include: { user: true },
+      });
+
+      if (session && session.expiresAt >= new Date()) {
+        // Valid session - set userId
+        req.userId = session.userId;
+        req.userRole = session.user.role;
+      }
+    }
+
+    // Continue regardless of authentication status
+    next();
+  } catch (error) {
+    // On error, just continue without setting userId
+    next();
+  }
+};
+
 export const requireAdmin = (
   req: AuthRequest,
   res: Response,

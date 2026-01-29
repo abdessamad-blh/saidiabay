@@ -88,6 +88,11 @@ export function Sidebar() {
       href: '/leads'
     },
     {
+      // icon: '🚫',
+      label: 'Dates Bloquées',
+      href: '/blocked-dates'
+    },
+    {
       // icon: '📝',
       label: 'Articles de Blog',
       href: '/blogs'

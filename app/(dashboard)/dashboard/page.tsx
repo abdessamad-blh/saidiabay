@@ -4,6 +4,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { api } from '@/lib/utils/api';
 import { formatCurrency, formatRelativeTime } from '@/lib/utils/format';
 import { DashboardStats } from '@/types';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -11,25 +12,51 @@ export default function DashboardPage() {
 
   useEffect(() => {
     loadStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadStats = async () => {
     try {
       const response: any = await api.get('/api/stats/dashboard');
+      console.log('Dashboard stats:', response);
       setStats(response.data);
     } catch (error) {
       console.error('Failed to load stats:', error);
+      // Set empty stats as fallback
+      setStats({
+        overview: {
+          totalProperties: 0,
+          availableRentals: 0,
+          availableSales: 0,
+          totalReservations: 0,
+          totalLeads: 0,
+          totalRevenue: 0,
+          occupancyRate: 0
+        },
+        recentReservations: [],
+        recentLeads: [],
+        topProperties: [],
+        revenueByMonth: [],
+        last12MonthsRevenue: []
+      });
     } finally {
       setIsLoading(false);
     }
   };
 
   if (isLoading) {
-    return <div className="text-center py-12">Loading...</div>;
+    return <div className="text-center py-12">Chargement...</div>;
   }
 
   if (!stats) {
-    return <div className="text-center py-12">Failed to load statistics</div>;
+    return (
+      <div className="text-center py-12">
+        <p className="text-gray-600 mb-4">Impossible de charger les statistiques</p>
+        <button onClick={loadStats} className="text-blue-600 hover:underline">
+          Réessayer
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -67,14 +94,58 @@ export default function DashboardPage() {
 
         <Card>
           <div className="text-center">
-            <p className="text-sm text-gray-600 mb-1">Total Revenue</p>
+            <p className="text-sm text-gray-600 mb-1">Revenu Net</p>
             <p className="text-3xl font-bold text-orange-600">
               {formatCurrency(stats.overview.totalRevenue)}
             </p>
-            <p className="text-xs text-gray-500 mt-1">All transactions</p>
+            <p className="text-xs text-gray-500 mt-1">Réservations confirmées + Ventes fermées</p>
           </div>
         </Card>
       </div>
+
+      {/* Revenue Chart - Last 12 Months */}
+      {stats.last12MonthsRevenue && stats.last12MonthsRevenue.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Revenu Net - 12 derniers mois</CardTitle>
+          </CardHeader>
+          <div className="h-80 px-4 pb-4">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={stats.last12MonthsRevenue}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis
+                  dataKey="monthName"
+                  stroke="#6b7280"
+                  style={{ fontSize: '12px' }}
+                />
+                <YAxis
+                  stroke="#6b7280"
+                  style={{ fontSize: '12px' }}
+                  tickFormatter={(value) => `${(value / 1000).toFixed(0)}k`}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: '#ffffff',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                  }}
+                  formatter={(value?: number) => [formatCurrency(value ?? 0), 'Revenu Net']}
+                  labelStyle={{ color: '#374151', fontWeight: 'bold' }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="revenue"
+                  stroke="#f97316"
+                  strokeWidth={3}
+                  dot={{ fill: '#f97316', r: 4 }}
+                  activeDot={{ r: 6 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>

@@ -1,8 +1,6 @@
 export const formatCurrency = (amount: number): string => {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  }).format(amount);
+  // Format as Moroccan Dirham (DH) without decimals
+  return `${Math.round(amount).toLocaleString('fr-MA')} DH`;
 };
 
 export const formatDate = (date: string | Date): string => {
